@@ -1,0 +1,15 @@
+name = "task-reminder-worker"
+main = "src/index.ts"
+compatibility_date = "2024-04-01"
+
+[vars]
+WAHA_URL = "https://waha-8coykttl2z9w.cgk-hero.sumopod.my.id/"
+WAHA_API_KEY = "D49HjbFd07EH85P4g9dGkaa8D8fYYj0c"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "task_reminder_db"
+database_id = "0b9afa2c-bb53-4b1f-a979-441eae207087" # To be filled after creation
+
+[triggers]
+crons = ["* * * * *"]

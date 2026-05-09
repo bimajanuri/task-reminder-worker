@@ -1,0 +1,247 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="Dashboard Task Reminder">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Kolom Kiri: Input & Daftar Task (Span 2) -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Form Input Task -->
+            <section
+                class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
+            >
+                <h2 class="text-lg font-semibold mb-4 text-indigo-600">
+                    Tambah Task Baru
+                </h2>
+                <form id="taskForm" class="grid grid-cols-2 gap-4">
+                    <input
+                        type="text"
+                        id="name"
+                        placeholder="Nama Penerima"
+                        class="border p-2 rounded focus:ring-2 focus:ring-indigo-300 outline-none"
+                        required
+                    />
+                    <input
+                        type="text"
+                        id="phone"
+                        placeholder="Nomor WA (contoh: 62812...)"
+                        class="border p-2 rounded"
+                        required
+                    />
+                    <input
+                        type="text"
+                        id="title"
+                        placeholder="Judul Task"
+                        class="col-span-2 border p-2 rounded"
+                        required
+                    />
+                    <textarea
+                        id="description"
+                        placeholder="Deskripsi Task"
+                        class="col-span-2 border p-2 rounded h-20"></textarea>
+                    <input
+                        type="datetime-local"
+                        id="deadline"
+                        class="border p-2 rounded"
+                        required
+                    />
+                    <button
+                        type="submit"
+                        class="bg-indigo-600 text-white font-bold py-2 rounded hover:bg-indigo-700 transition"
+                        >Simpan Task</button
+                    >
+                </form>
+            </section>
+
+            <!-- Daftar Task -->
+            <section
+                class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+            >
+                <div
+                    class="p-4 bg-gray-50 border-b flex justify-between items-center"
+                >
+                    <h2 class="font-semibold">Daftar Task Pending</h2>
+                    <button
+                        id="refreshTasks"
+                        class="text-xs text-indigo-600 hover:underline"
+                        >Refresh List</button
+                    >
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr
+                                class="bg-gray-100 text-xs uppercase text-gray-600"
+                            >
+                                <th class="p-4">Nama & Task</th>
+                                <th class="p-4">Deadline</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4 text-center">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="taskTableBody" class="text-sm divide-y">
+                            <!-- Data diisi via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- Kolom Kanan: WA Status & Reminders Status -->
+        <div class="space-y-6">
+            <!-- WhatsApp Session Card -->
+            <section
+                class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
+            >
+                <h2 class="text-lg font-semibold mb-4">WhatsApp Status</h2>
+                <div id="waStatusContainer" class="text-center space-y-4">
+                    <div
+                        id="waStatusText"
+                        class="py-2 px-4 rounded bg-gray-100 font-mono text-sm"
+                    >
+                        LOADING...
+                    </div>
+                    <div
+                        id="qrContainer"
+                        class="hidden border-2 border-dashed p-4 rounded bg-white"
+                    >
+                        <p class="text-xs text-gray-500 mb-2">
+                            Scan QR untuk Login
+                        </p>
+                        <img
+                            id="qrImage"
+                            src=""
+                            class="mx-auto w-48 h-48 border"
+                        />
+                    </div>
+                    <div class="flex gap-2">
+                        <button
+                            id="btnCheckStatus"
+                            class="flex-1 text-xs bg-gray-100 py-2 rounded border hover:bg-gray-200"
+                            >Cek Status</button
+                        >
+                        <button
+                            id="btnLogout"
+                            class="flex-1 text-xs bg-red-50 py-2 rounded border border-red-200 text-red-600 hover:bg-red-100"
+                            >Logout</button
+                        >
+                    </div>
+                </div>
+            </section>
+
+            <!-- Reminder History Log -->
+            <section
+                class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
+            >
+                <h2 class="text-lg font-semibold mb-2">Log Reminder</h2>
+                <div
+                    id="reminderLog"
+                    class="text-xs space-y-2 max-h-60 overflow-y-auto"
+                >
+                    <p class="text-gray-400 italic text-center">
+                        Belum ada pengiriman
+                    </p>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Client-side Logic -->
+    <script is:inline>
+        const API_URL = ""; // Jika beda domain, isi dengan URL Worker Anda
+        const SESSION_NAME = "gereja-bot";
+
+        // --- WhatsApp Logic ---
+        async function checkWAStatus() {
+            const res = await fetch(`${API_URL}/api/wa-status`);
+            const data = await res.json();
+            const session = data.find((s) => s.name === SESSION_NAME);
+
+            const statusEl = document.getElementById("waStatusText");
+            const badgeEl = document.getElementById("wa-badge");
+            const qrCont = document.getElementById("qrContainer");
+
+            if (session && session.status === "WORKING") {
+                statusEl.className =
+                    "py-2 px-4 rounded bg-green-100 text-green-700 font-bold";
+                statusEl.innerText = "CONNECTED";
+                badgeEl.className =
+                    "px-3 py-1 rounded-full text-xs font-semibold bg-green-500";
+                badgeEl.innerText = "Online";
+                qrCont.classList.add("hidden");
+            } else {
+                statusEl.className =
+                    "py-2 px-4 rounded bg-red-100 text-red-700 font-bold";
+                statusEl.innerText = "OFFLINE";
+                badgeEl.className =
+                    "px-3 py-1 rounded-full text-xs font-semibold bg-red-500";
+                badgeEl.innerText = "Offline";
+                loadQRCode();
+            }
+        }
+
+        async function loadQRCode() {
+            const qrCont = document.getElementById("qrContainer");
+            const qrImg = document.getElementById("qrImage");
+            qrImg.src = `${API_URL}/api/wa-login?t=${Date.now()}`;
+            qrCont.classList.remove("hidden");
+        }
+
+        // --- Task Logic ---
+        async function loadTasks() {
+            const res = await fetch(`${API_URL}/api/tasks`);
+            const tasks = await res.json();
+            const body = document.getElementById("taskTableBody");
+            body.innerHTML = tasks
+                .map(
+                    (t) => `
+        <tr>
+          <td class="p-4">
+            <div class="font-bold">${t.name}</div>
+            <div class="text-xs text-gray-500">${t.title}</div>
+          </td>
+          <td class="p-4 text-xs font-mono">${t.deadline.replace("T", " ")}</td>
+          <td class="p-4"><span class="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs">${t.status}</span></td>
+          <td class="p-4 flex gap-2 justify-center">
+            <button onclick="testSend(${t.id})" class="bg-gray-800 text-white p-1 px-2 rounded text-[10px] hover:bg-black">TEST WA</button>
+            <button onclick="deleteTask(${t.id})" class="text-red-500 hover:text-red-700 text-[10px]">DELETE</button>
+          </td>
+        </tr>
+      `,
+                )
+                .join("");
+        }
+
+        async function testSend(id) {
+            if (!confirm("Kirim pesan tes sekarang?")) return;
+            const res = await fetch(`${API_URL}/api/tasks/${id}/test-send`, {
+                method: "POST",
+            });
+            const data = await res.json();
+            alert(data.message || data.error);
+            loadTasks();
+        }
+
+        document.getElementById("taskForm").onsubmit = async (e) => {
+            e.preventDefault();
+            const body = {
+                name: document.getElementById("name").value,
+                phone_number: document.getElementById("phone").value,
+                title: document.getElementById("title").value,
+                description: document.getElementById("description").value,
+                deadline: document.getElementById("deadline").value,
+            };
+            await fetch(`${API_URL}/api/tasks`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            e.target.reset();
+            loadTasks();
+        };
+
+        // Initialize
+        checkWAStatus();
+        loadTasks();
+    </script>
+</Layout>
