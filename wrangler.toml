@@ -12,7 +12,19 @@ database_name = "task_reminder_db"
 database_id = "0b9afa2c-bb53-4b1f-a979-441eae207087"
 
 [triggers]
-crons = ["* * * * *"]
+crons = ["0 */1 * * *"]
 
 [site]
 bucket = "./dist" # Lokasi hasil build statis Astro
+
+# Konfigurasi Queue sebagai Producer
+[[queues.producers]]
+queue = "task-reminder-queue"
+binding = "REMINDER_QUEUE"
+
+# Konfigurasi Queue sebagai Consumer (Worker yang sama akan memprosesnya)
+[[queues.consumers]]
+queue = "task-reminder-queue"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3 # Otomatis mencoba ulang jika gagal
