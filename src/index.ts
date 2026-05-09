@@ -1,88 +1,147 @@
-import { app, wahaFetch, SESSION_NAME, type Bindings } from './api';
-// @ts-ignore
-import astroHandler from '../dist/_worker.js/index.js';
+import { Hono } from 'hono';
+import api from './api';
 
+// Import Astro handler hasil build. 
+// Menggunakan @ts-ignore agar tidak error di editor/local (saat folder dist belum ter-generate)
+// @ts-ignore
+import astroApp from '../dist/_worker.js/index.js';
+
+// Tambahkan WAHA_API_KEY ke dalam Bindings
+const app = new Hono<{ Bindings: { DB: D1Database, WAHA_URL: string, WAHA_API_KEY: string } }>();
+
+// Mount API routes
+app.route('/api', api);
+
+// Export worker
 export default {
-    // A. FETCH HANDLER: Hono + Astro
-    async fetch(request: Request, env: Bindings, ctx: ExecutionContext) {
+    // Untuk HTTP Requests (Frontend & API)
+    async fetch(request: Request, env: any, ctx: ExecutionContext) {
         const url = new URL(request.url);
+
+        // 1. Jika request menuju '/api', tangani dengan Hono API
         if (url.pathname.startsWith('/api')) {
             return app.fetch(request, env, ctx);
         }
-        return astroHandler.fetch(request, env, ctx);
+
+        // 2. Fallback ke Astro SSR untuk me-render halaman web (UI)
+        return astroApp.fetch(request, env, ctx);
     },
 
-    // B. SCHEDULED HANDLER (PRODUCER): Mendeteksi task & masukkan ke antrean
-    async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
-        const now = new Date();
-        const nowIso = now.toISOString();
+    // Untuk CRON Jobs (Logika Reminder Otomatis)
+    // Tambahkan WAHA_API_KEY di parameter env
+    async scheduled(event: ScheduledEvent, env: { DB: D1Database, WAHA_URL: string, WAHA_API_KEY: string }, ctx: ExecutionContext) {
+        console.log("Menjalankan pengecekan task otomatis...");
 
-        try {
-            // 1. Mark Finished untuk task yang terlewat
-            await env.DB.prepare(
-                'UPDATE tasks SET status = "Finished" WHERE deadline < ? AND status = "pending"'
-            ).bind(nowIso).run();
+        // Fallback URL WAHA & Ambil API Key
+        const wahaUrl = env.WAHA_URL || 'http://localhost:3000';
+        const apiKey = env.WAHA_API_KEY || ''; // Mengambil API Key dari environment variables
 
-            // 2. Ambil task yang masih pending
-            const { results: tasks } = await env.DB.prepare('SELECT * FROM tasks WHERE status = "pending"').all();
-
-            for (const task of (tasks as any[])) {
-                const deadline = new Date(task.deadline).getTime();
-                const diffHours = (deadline - now.getTime()) / (1000 * 60 * 60);
-                const hourWib = (now.getUTCHours() + 7) % 24;
-                const minWib = now.getUTCMinutes();
-
-                let reminderType = "";
-                if (diffHours <= 24 && diffHours > 23.9) reminderType = '24h';
-                else if (hourWib === 7 && minWib === 0) {
-                    const today = new Date(now.getTime() + 7 * 3600000).toISOString().split('T')[0];
-                    const taskDay = new Date(deadline + 7 * 3600000).toISOString().split('T')[0];
-                    if (today === taskDay) reminderType = '7am';
-                }
-                else if (diffHours <= 1 && diffHours > 0.9 && hourWib !== 7) reminderType = '1h';
-
-                if (reminderType) {
-                    // Cek apakah sudah pernah dikirim
-                    const existing = await env.DB.prepare('SELECT id FROM reminders WHERE task_id = ? AND type = ?')
-                        .bind(task.id, reminderType).first();
-
-                    if (!existing) {
-                        // Masukkan ke Queue (PRODUCER)
-                        await env.REMINDER_QUEUE.send({ task, reminderType });
-                        console.log(`Pushed to Queue: ${task.title} (${reminderType})`);
-                    }
-                }
+        // Helper: Fungsi untuk mengirimkan WA
+        const sendWhatsappReminder = async (task: any, reminderType: string) => {
+            let phoneNumber = task.phone_number.trim();
+            if (phoneNumber.startsWith('0')) {
+                phoneNumber = '62' + phoneNumber.substring(1);
             }
-        } catch (e) { console.error('Cron Error:', e); }
-    },
+            const chatId = `${phoneNumber}@c.us`;
 
-    // C. QUEUE HANDLER (CONSUMER): Melakukan pengiriman nyata
-    async queue(batch: MessageBatch<any>, env: Bindings, ctx: ExecutionContext) {
-        for (const message of batch.messages) {
-            const { task, reminderType } = message.body;
+            let prefix = "";
+            if (reminderType === "1st") prefix = "[Reminder H-1]";
+            else if (reminderType === "2nd") prefix = "[Reminder Pagi Hari]";
+            else if (reminderType === "3rd") prefix = "[Reminder 1 Jam Terakhir]";
 
-            const msg = `Halo *${task.name}*! 👋\n\n` +
-                `Pengingat *${reminderType}* untuk:\n📌 *${task.title}*\n` +
-                `⏰ Deadline: ${task.deadline}`;
+            const textMessage = `Halo ${task.name},\n\n${prefix} Ini adalah pengingat otomatis untuk pekerjaan Anda:\n*${task.title}*\n\nTenggat Waktu: ${task.deadline}\nDeskripsi: ${task.description || '-'}\n\nTerima kasih.`;
 
             try {
-                const res = await wahaFetch(env, '/api/sendText', {
+                const response = await fetch(`${wahaUrl}/api/sendText`, {
                     method: 'POST',
-                    body: JSON.stringify({ chatId: `${task.phone_number}@c.us`, text: msg, session: SESSION_NAME })
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-Api-Key': apiKey, // Menambahkan API Key di sini
+                        'Authorization': `Bearer ${apiKey}` // Opsi fallback tambahan
+                    },
+                    body: JSON.stringify({
+                        chatId: chatId,
+                        text: textMessage,
+                        session: 'default'
+                    })
                 });
 
-                if (res.ok) {
-                    // Catat sukses di D1
-                    await env.DB.prepare('INSERT INTO reminders (task_id, type) VALUES (?, ?)')
-                        .bind(task.id, reminderType).run();
-                    message.ack(); // Hapus dari antrean
+                if (!response.ok) {
+                    console.error(`Gagal kirim WA untuk Task ${task.id}:`, await response.text());
                 } else {
-                    // Trigger retry otomatis oleh Cloudflare
-                    throw new Error(`WAHA error: ${res.status}`);
+                    console.log(`WA terkirim untuk Task ${task.id} (${reminderType})`);
                 }
-            } catch (err) {
-                console.error('Queue Consumer Error:', err);
-                // Jangan ack(), maka Cloudflare akan mencoba ulang sesuai max_retries
+            } catch (error) {
+                console.error(`Error memanggil WAHA untuk Task ${task.id}:`, error);
+            }
+        };
+
+        // 1. Apabila deadline sudah lewat -> CLOSED
+        await env.DB.prepare(`
+      UPDATE tasks 
+      SET status = 'Closed' 
+      WHERE deadline < datetime('now') AND status != 'Finished' AND status != 'Closed'
+    `).run();
+
+        // 2. Reminder 1: 24 jam sebelum deadline -> SEND 1ST
+        const tasks1st = await env.DB.prepare(`
+      SELECT * FROM tasks 
+      WHERE status = 'Pending' 
+      AND deadline <= datetime('now', '+24 hours')
+      AND deadline > datetime('now', '+12 hours')
+    `).all();
+
+        if (tasks1st.results) {
+            for (const task of tasks1st.results) {
+                await sendWhatsappReminder(task, "1st");
+                await env.DB.prepare("UPDATE tasks SET status = 'Send 1st' WHERE id = ?").bind(task.id).run();
+            }
+        }
+
+        // 3. Reminder 2: Pukul 7 pagi sebelum deadline -> SEND 2ND
+        // 00 UTC = 07:00 WIB
+        const tasks2nd = await env.DB.prepare(`
+      SELECT * FROM tasks 
+      WHERE status IN ('Pending', 'Send 1st')
+      AND date(deadline) = date('now')
+      AND strftime('%H', 'now') = '00' 
+    `).all();
+
+        if (tasks2nd.results) {
+            for (const task of tasks2nd.results) {
+                await sendWhatsappReminder(task, "2nd");
+                await env.DB.prepare("UPDATE tasks SET status = 'Send 2nd' WHERE id = ?").bind(task.id).run();
+            }
+        }
+
+        // 4. Reminder 3: 1 jam sebelum deadline -> FINISHED
+        const tasks3rd = await env.DB.prepare(`
+      SELECT * FROM tasks 
+      WHERE status NOT IN ('Finished', 'Closed')
+      AND deadline <= datetime('now', '+1 hour')
+      AND deadline >= datetime('now')
+    `).all();
+
+        if (tasks3rd.results) {
+            for (const task of tasks3rd.results) {
+                await sendWhatsappReminder(task, "3rd");
+                await env.DB.prepare("UPDATE tasks SET status = 'Finished' WHERE id = ?").bind(task.id).run();
+            }
+        }
+    },
+
+    // Tambahkan handler antrean (queue) ini agar Cloudflare tidak error
+    async queue(batch: MessageBatch<any>, env: any): Promise<void> {
+        console.log(`Memproses ${batch.messages.length} pesan dari antrean.`);
+
+        for (const message of batch.messages) {
+            try {
+                console.log("Pesan diproses:", message.body);
+                message.ack();
+            } catch (error) {
+                console.error("Gagal memproses pesan:", error);
+                message.retry();
             }
         }
     }

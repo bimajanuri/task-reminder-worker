@@ -1,90 +1,149 @@
 import { Hono } from 'hono';
-import { cors } from 'hono/cors';
 
-export type Bindings = {
+type Bindings = {
     DB: D1Database;
     WAHA_URL: string;
-    WAHA_API_KEY: string;
-    REMINDER_QUEUE: Queue; // Tambahkan binding queue
+    WAHA_API_KEY: string; // Menambahkan typing untuk API Key
 };
 
-export const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
-export const SESSION_NAME = 'gereja-bot';
+const api = new Hono<{ Bindings: Bindings }>();
 
-app.use('/*', cors());
+// GET tasks (dengan filter & pagination)
+api.get('/tasks', async (c) => {
+    const statusFilter = c.req.query('status');
+    const dateFilter = c.req.query('date');
+    const page = parseInt(c.req.query('page') || '1');
+    const limit = 10;
+    const offset = (page - 1) * limit;
 
-// Helper Fetch WAHA
-export const wahaFetch = (env: Bindings, path: string, options: RequestInit = {}) => {
-    return fetch(`${env.WAHA_URL}${path}`, {
-        ...options,
-        headers: {
-            ...options.headers,
-            'X-Api-Key': env.WAHA_API_KEY,
-            'Content-Type': 'application/json',
-        }
-    });
-};
+    let whereClause = " WHERE status NOT IN ('Finished', 'Closed')";
+    const params: any[] = [];
 
-// --- API WAHA & TASKS (Fungsi sebelumnya dipertahankan penuh) ---
-app.get('/wa-status', async (c) => {
-    const res = await wahaFetch(c.env, '/api/sessions?all=true');
-    return c.json(await res.json());
-});
-
-app.post('/wa-login', async (c) => {
-    const res = await wahaFetch(c.env, `/api/sessions/${SESSION_NAME}/start`, { method: 'POST' });
-    return c.json(await res.json());
-});
-
-app.get('/wa-qr', async (c) => {
-    const res = await wahaFetch(c.env, `/api/sessions/${SESSION_NAME}/qr`);
-    if (!res.ok) return c.json({ error: 'QR belum tersedia' }, 404);
-    return new Response(await res.blob(), { headers: { 'Content-Type': 'image/png' } });
-});
-
-app.delete('/wa-logout', async (c) => {
-    const res = await wahaFetch(c.env, `/api/sessions/${SESSION_NAME}/stop`, { method: 'POST' });
-    return c.json(await res.json());
-});
-
-app.get('/tasks', async (c) => {
-    const { results } = await c.env.DB.prepare('SELECT * FROM tasks ORDER BY deadline ASC').all();
-    return c.json(results);
-});
-
-app.post('/tasks', async (c) => {
-    const { name, title, description, deadline, phone_number } = await c.req.json();
-    await c.env.DB.prepare(
-        'INSERT INTO tasks (name, title, description, deadline, phone_number) VALUES (?, ?, ?, ?, ?)'
-    ).bind(name, title, description, deadline, phone_number).run();
-    return c.json({ success: true });
-});
-
-app.delete('/tasks/:id', async (c) => {
-    const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run();
-    return c.json({ success: true });
-});
-
-// Test Send Manual (Langsung kirim tanpa Queue agar respon cepat)
-app.post('/tasks/:id/test-send', async (c) => {
-    const id = c.req.param('id');
-    const task = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first() as any;
-    if (!task) return c.json({ error: 'Task not found' }, 404);
-
-    const message = `🧪 *TEST MANUAL*\nHalo *${task.name}*!\nReminder: *${task.title}*`;
-    const res = await wahaFetch(c.env, '/api/sendText', {
-        method: 'POST',
-        body: JSON.stringify({ chatId: `${task.phone_number}@c.us`, text: message, session: SESSION_NAME })
-    });
-
-    if (res.ok) {
-        await c.env.DB.batch([
-            c.env.DB.prepare('UPDATE tasks SET status = "tested" WHERE id = ?').bind(id),
-            c.env.DB.prepare('INSERT INTO reminders (task_id, type) VALUES (?, ?)')
-                .bind(id, 'manual_test') // Perbaikan: Parameter binding cocok
-        ]);
-        return c.json({ success: true, message: 'Sent' });
+    if (statusFilter && statusFilter !== 'All') {
+        whereClause = " WHERE status = ?";
+        params.push(statusFilter);
     }
-    return c.json({ error: 'Gagal WAHA' }, 400);
+
+    if (dateFilter) {
+        whereClause += " AND date(deadline) = date(?)";
+        params.push(dateFilter);
+    }
+
+    // Count total tasks for pagination
+    const countQuery = `SELECT COUNT(*) as total FROM tasks ${whereClause}`;
+    const countResult: any = await c.env.DB.prepare(countQuery).bind(...params).first();
+    const total = countResult.total;
+    const totalPages = Math.ceil(total / limit);
+
+    // Get paginated tasks
+    const tasksQuery = `SELECT * FROM tasks ${whereClause} ORDER BY deadline ASC LIMIT ? OFFSET ?`;
+    const { results } = await c.env.DB.prepare(tasksQuery).bind(...params, limit, offset).all();
+
+    return c.json({
+        tasks: results,
+        totalPages,
+        currentPage: page,
+        totalTasks: total
+    });
 });
+
+// GET single task
+api.get('/tasks/:id', async (c) => {
+    const id = c.req.param('id');
+    const task = await c.env.DB.prepare("SELECT * FROM tasks WHERE id = ?").bind(id).first();
+    if (!task) return c.json({ error: 'Task not found' }, 404);
+    return c.json(task);
+});
+
+// CREATE task
+api.post('/tasks', async (c) => {
+    const body = await c.req.json();
+    const { name, title, description, deadline, phone_number } = body;
+
+    await c.env.DB.prepare(
+        "INSERT INTO tasks (name, title, description, deadline, phone_number, status) VALUES (?, ?, ?, ?, ?, 'Pending')"
+    ).bind(name, title, description, deadline, phone_number).run();
+
+    return c.json({ success: true, message: 'Task added' });
+});
+
+// UPDATE task (Termasuk ubah status manual)
+api.put('/tasks/:id', async (c) => {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const { name, title, description, deadline, phone_number, status } = body;
+
+    await c.env.DB.prepare(
+        "UPDATE tasks SET name = ?, title = ?, description = ?, deadline = ?, phone_number = ?, status = ? WHERE id = ?"
+    ).bind(name, title, description, deadline, phone_number, status, id).run();
+
+    return c.json({ success: true, message: 'Task updated' });
+});
+
+// DELETE task
+api.delete('/tasks/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare("DELETE FROM tasks WHERE id = ?").bind(id).run();
+    return c.json({ success: true, message: 'Task deleted' });
+});
+
+// MANUAL REMINDER (Ubah status ke 'Send' & Kirim WA via WAHA)
+api.post('/tasks/:id/remind', async (c) => {
+    const id = c.req.param('id');
+
+    // 1. Ambil data task
+    const task: any = await c.env.DB.prepare("SELECT * FROM tasks WHERE id = ?").bind(id).first();
+
+    if (!task) {
+        return c.json({ success: false, message: 'Task tidak ditemukan' }, 404);
+    }
+
+    // 2. Format nomor HP (WAHA butuh format 628... @c.us)
+    let phoneNumber = task.phone_number.trim();
+    if (phoneNumber.startsWith('0')) {
+        phoneNumber = '62' + phoneNumber.substring(1);
+    }
+    const chatId = `${phoneNumber}@c.us`;
+
+    // 3. Format pesan WA (Manual Reminder)
+    const textMessage = `Halo ${task.name},\n\n[Reminder Manual] Ini adalah pengingat untuk pekerjaan Anda:\n*${task.title}*\n\nTenggat Waktu: ${task.deadline}\nDeskripsi: ${task.description || '-'}\n\nTerima kasih.`;
+
+    // 4. Kirim pesan menggunakan WAHA API
+    try {
+        const wahaUrl = c.env.WAHA_URL || 'http://localhost:3000';
+        const apiKey = c.env.WAHA_API_KEY || ''; // Mengambil API Key dari environment variables
+
+        const response = await fetch(`${wahaUrl}/api/sendText`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Api-Key': apiKey, // WAHA menggunakan format X-Api-Key
+                'Authorization': `Bearer ${apiKey}` // Opsi fallback tambahan
+            },
+            body: JSON.stringify({
+                chatId: chatId,
+                text: textMessage,
+                session: 'default' // Memastikan session menggunakan default
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("WAHA Error:", errorText);
+            return c.json({ success: false, message: 'Gagal mengirim pesan WhatsApp via WAHA: ' + errorText }, 500);
+        }
+
+        // 5. Update status di DB
+        await c.env.DB.prepare(
+            "UPDATE tasks SET status = 'Send' WHERE id = ?"
+        ).bind(id).run();
+
+        return c.json({ success: true, message: 'Manual reminder terkirim via WhatsApp' });
+    } catch (error: any) {
+        console.error("Error memanggil WAHA:", error);
+        return c.json({ success: false, message: 'Terjadi kesalahan saat menghubungi server WAHA: ' + error.message }, 500);
+    }
+});
+
+export default api;

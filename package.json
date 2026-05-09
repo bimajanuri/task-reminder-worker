@@ -8,14 +8,14 @@
     "db:init": "wrangler d1 execute task_reminder_db --local --file=./schema.sql"
   },
   "dependencies": {
-    "astro": "^4.10.3",
     "@astrojs/cloudflare": "^11.0.0",
     "@astrojs/react": "^3.0.0",
-    "@astrojs/tailwind": "^5.1.0",
+    "@astrojs/tailwind": "^6.0.2",
+    "astro": "^4.10.3",
     "hono": "^4.12.18",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "tailwindcss": "^3.4.0"
+    "tailwindcss": "^3.4.19"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260509.1",
