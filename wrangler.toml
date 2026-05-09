@@ -15,4 +15,4 @@ database_id = "0b9afa2c-bb53-4b1f-a979-441eae207087"
 crons = ["* * * * *"]
 
 [site]
-bucket = "./dist/client" # Lokasi hasil build statis Astro
+bucket = "./dist" # Lokasi hasil build statis Astro

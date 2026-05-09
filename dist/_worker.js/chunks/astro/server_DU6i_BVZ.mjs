@@ -1,4 +1,8 @@
 globalThis.process ??= {}; globalThis.process.env ??= {};
+function getDefaultExportFromCjs (x) {
+	return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
+}
+
 const ASTRO_VERSION = "4.16.19";
 const REROUTE_DIRECTIVE_HEADER = "X-Astro-Reroute";
 const REWRITE_DIRECTIVE_HEADER_KEY = "X-Astro-Rewrite";
@@ -2546,6 +2550,113 @@ async function renderPage(result, componentFactory, props, children, streaming, 
   }
 }
 
+/*! https://mths.be/cssesc v3.0.0 by @mathias */
+
+var object = {};
+var hasOwnProperty = object.hasOwnProperty;
+var merge = function merge(options, defaults) {
+	if (!options) {
+		return defaults;
+	}
+	var result = {};
+	for (var key in defaults) {
+		// `if (defaults.hasOwnProperty(key) { … }` is not needed here, since
+		// only recognized option names are used.
+		result[key] = hasOwnProperty.call(options, key) ? options[key] : defaults[key];
+	}
+	return result;
+};
+
+var regexAnySingleEscape = /[ -,\.\/:-@\[-\^`\{-~]/;
+var regexSingleEscape = /[ -,\.\/:-@\[\]\^`\{-~]/;
+var regexExcessiveSpaces = /(^|\\+)?(\\[A-F0-9]{1,6})\x20(?![a-fA-F0-9\x20])/g;
+
+// https://mathiasbynens.be/notes/css-escapes#css
+var cssesc = function cssesc(string, options) {
+	options = merge(options, cssesc.options);
+	if (options.quotes != 'single' && options.quotes != 'double') {
+		options.quotes = 'single';
+	}
+	var quote = options.quotes == 'double' ? '"' : '\'';
+	var isIdentifier = options.isIdentifier;
+
+	var firstChar = string.charAt(0);
+	var output = '';
+	var counter = 0;
+	var length = string.length;
+	while (counter < length) {
+		var character = string.charAt(counter++);
+		var codePoint = character.charCodeAt();
+		var value = void 0;
+		// If it’s not a printable ASCII character…
+		if (codePoint < 0x20 || codePoint > 0x7E) {
+			if (codePoint >= 0xD800 && codePoint <= 0xDBFF && counter < length) {
+				// It’s a high surrogate, and there is a next character.
+				var extra = string.charCodeAt(counter++);
+				if ((extra & 0xFC00) == 0xDC00) {
+					// next character is low surrogate
+					codePoint = ((codePoint & 0x3FF) << 10) + (extra & 0x3FF) + 0x10000;
+				} else {
+					// It’s an unmatched surrogate; only append this code unit, in case
+					// the next code unit is the high surrogate of a surrogate pair.
+					counter--;
+				}
+			}
+			value = '\\' + codePoint.toString(16).toUpperCase() + ' ';
+		} else {
+			if (options.escapeEverything) {
+				if (regexAnySingleEscape.test(character)) {
+					value = '\\' + character;
+				} else {
+					value = '\\' + codePoint.toString(16).toUpperCase() + ' ';
+				}
+			} else if (/[\t\n\f\r\x0B]/.test(character)) {
+				value = '\\' + codePoint.toString(16).toUpperCase() + ' ';
+			} else if (character == '\\' || !isIdentifier && (character == '"' && quote == character || character == '\'' && quote == character) || isIdentifier && regexSingleEscape.test(character)) {
+				value = '\\' + character;
+			} else {
+				value = character;
+			}
+		}
+		output += value;
+	}
+
+	if (isIdentifier) {
+		if (/^-[-\d]/.test(output)) {
+			output = '\\-' + output.slice(1);
+		} else if (/\d/.test(firstChar)) {
+			output = '\\3' + firstChar + ' ' + output.slice(1);
+		}
+	}
+
+	// Remove spaces after `\HEX` escapes that are not followed by a hex digit,
+	// since they’re redundant. Note that this is only possible if the escape
+	// sequence isn’t preceded by an odd number of backslashes.
+	output = output.replace(regexExcessiveSpaces, function ($0, $1, $2) {
+		if ($1 && $1.length % 2) {
+			// It’s not safe to remove the space, so don’t.
+			return $0;
+		}
+		// Strip the space.
+		return ($1 || '') + $2;
+	});
+
+	if (!isIdentifier && options.wrap) {
+		return quote + output + quote;
+	}
+	return output;
+};
+
+// Expose default options (so they can be overridden globally).
+cssesc.options = {
+	'escapeEverything': false,
+	'isIdentifier': false,
+	'quotes': 'single',
+	'wrap': false
+};
+
+cssesc.version = '3.0.0';
+
 "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_".split("").reduce((v, c) => (v[c.charCodeAt(0)] = c, v), []);
 "-0123456789_".split("").reduce((v, c) => (v[c.charCodeAt(0)] = c, v), []);
 
@@ -2566,4 +2677,4 @@ function spreadAttributes(values = {}, _name, { class: scopedClassName } = {}) {
   return markHTMLString(output);
 }
 
-export { blue as $, AstroError as A, ASTRO_VERSION as B, clientLocalsSymbol as C, DEFAULT_404_COMPONENT as D, clientAddressSymbol as E, PrerenderClientAddressNotAvailable as F, GetStaticPathsRequired as G, ClientAddressNotAvailable as H, InvalidGetStaticPathsReturn as I, AstroResponseHeadersReassigned as J, responseSentSymbol as K, LocalsNotAnObject as L, MiddlewareNoDataOrNextCalled as M, NOOP_MIDDLEWARE_HEADER as N, renderPage as O, PageNumberParamNotFound as P, REWRITE_DIRECTIVE_HEADER_KEY as Q, REROUTE_DIRECTIVE_HEADER as R, StaticClientAddressNotAvailable as S, REWRITE_DIRECTIVE_HEADER_VALUE as T, renderEndpoint as U, decryptString as V, createSlotValueFromString as W, bold as X, red as Y, yellow as Z, dim as _, renderSlot as a, REROUTABLE_STATUS_CODES as a0, renderTemplate as b, createComponent as c, createAstro as d, renderComponent as e, defineScriptVars as f, decodeKey as g, escape as h, i18nNoLocaleFoundInPath as i, ResponseSentError as j, MiddlewareNotAResponse as k, InvalidGetStaticPathsEntry as l, maybeRenderHead as m, GetStaticPathsExpectedParams as n, GetStaticPathsInvalidRouteParam as o, NoMatchingStaticPathFound as p, PrerenderDynamicEndpointPathCollide as q, renderHead as r, ReservedSlotName as s, renderSlotToString as t, renderJSX as u, chunkToString as v, isRenderInstruction as w, originPathnameSymbol as x, RewriteWithBodyUsed as y, ROUTE_TYPE_HEADER as z };
+export { dim as $, AstroError as A, ROUTE_TYPE_HEADER as B, ASTRO_VERSION as C, DEFAULT_404_COMPONENT as D, clientLocalsSymbol as E, clientAddressSymbol as F, GetStaticPathsRequired as G, PrerenderClientAddressNotAvailable as H, InvalidGetStaticPathsReturn as I, ClientAddressNotAvailable as J, AstroResponseHeadersReassigned as K, LocalsNotAnObject as L, MiddlewareNoDataOrNextCalled as M, NOOP_MIDDLEWARE_HEADER as N, responseSentSymbol as O, PageNumberParamNotFound as P, renderPage as Q, REROUTE_DIRECTIVE_HEADER as R, StaticClientAddressNotAvailable as S, REWRITE_DIRECTIVE_HEADER_KEY as T, REWRITE_DIRECTIVE_HEADER_VALUE as U, renderEndpoint as V, decryptString as W, createSlotValueFromString as X, bold as Y, red as Z, yellow as _, renderSlot as a, blue as a0, REROUTABLE_STATUS_CODES as a1, renderTemplate as b, createComponent as c, createAstro as d, renderComponent as e, defineScriptVars as f, decodeKey as g, escape as h, getDefaultExportFromCjs as i, i18nNoLocaleFoundInPath as j, ResponseSentError as k, MiddlewareNotAResponse as l, maybeRenderHead as m, InvalidGetStaticPathsEntry as n, GetStaticPathsExpectedParams as o, GetStaticPathsInvalidRouteParam as p, NoMatchingStaticPathFound as q, renderHead as r, PrerenderDynamicEndpointPathCollide as s, ReservedSlotName as t, renderSlotToString as u, renderJSX as v, chunkToString as w, isRenderInstruction as x, originPathnameSymbol as y, RewriteWithBodyUsed as z };
