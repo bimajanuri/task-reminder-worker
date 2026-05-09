@@ -8,11 +8,12 @@
     ],
     "types": [
       "@cloudflare/workers-types"
-    ], // Tambahkan ini (PENTING)
+    ],
     "strict": true,
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "isolatedModules": true,
-    "moduleDetection": "force"
+    "moduleDetection": "force",
+    "jsxImportSource": "react"
   }
 }
