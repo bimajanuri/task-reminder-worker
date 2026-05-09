@@ -1,5 +1,5 @@
 name = "task-reminder-worker"
-main = "src/api/index.ts"
+main = "src/index.ts"
 compatibility_date = "2024-04-01"
 
 [vars]
@@ -13,3 +13,6 @@ database_id = "0b9afa2c-bb53-4b1f-a979-441eae207087"
 
 [triggers]
 crons = ["* * * * *"]
+
+[site]
+bucket = "./dist/client" # Lokasi hasil build statis Astro

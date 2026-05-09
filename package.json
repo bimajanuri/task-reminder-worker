@@ -1,25 +1,25 @@
 {
   "name": "task-reminder-worker",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "build": "tsc",
-    "db:init": "wrangler d1 execute task_reminder_db --local --file=./schema.sql",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build && tsc",
+    "preview": "astro preview",
+    "deploy": "astro build && wrangler deploy",
+    "db:init": "wrangler d1 execute task_reminder_db --local --file=./schema.sql"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "hono": "^4.12.18"
+    "@astrojs/cloudflare": "^11.0.0",
+    "@astrojs/tailwind": "^5.1.0",
+    "astro": "^4.15.0",
+    "hono": "^4.5.0",
+    "tailwindcss": "^3.4.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260509.1",
-    "typescript": "^6.0.3",
-    "wrangler": "^4.90.0"
+    "@cloudflare/workers-types": "^4.20240401.0",
+    "typescript": "^5.5.0",
+    "wrangler": "^3.50.0"
   }
 }
