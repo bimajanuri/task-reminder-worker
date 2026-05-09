@@ -1,6 +1,8 @@
 CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
     title TEXT NOT NULL,
+    description TEXT,
     deadline DATETIME NOT NULL,
     phone_number TEXT NOT NULL,
     status TEXT DEFAULT 'pending'

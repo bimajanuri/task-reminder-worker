@@ -1,12 +1,14 @@
 ---
 import Layout from "../layouts/Layout.astro";
+
+// Mengambil API_URL dari environment variable secara dinamis
+// Pastikan Anda menambahkan PUBLIC_API_URL di Cloudflare Pages atau file .env
+const apiUrl = import.meta.env.PUBLIC_API_URL || "";
 ---
 
 <Layout title="Dashboard Task Reminder">
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <!-- Kolom Kiri: Input & Daftar Task (Span 2) -->
         <div class="lg:col-span-2 space-y-6">
-            <!-- Form Input Task -->
             <section
                 class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
             >
@@ -24,7 +26,7 @@ import Layout from "../layouts/Layout.astro";
                     <input
                         type="text"
                         id="phone"
-                        placeholder="Nomor WA (contoh: 62812...)"
+                        placeholder="Nomor WA (62812...)"
                         class="border p-2 rounded"
                         required
                     />
@@ -53,7 +55,6 @@ import Layout from "../layouts/Layout.astro";
                 </form>
             </section>
 
-            <!-- Daftar Task -->
             <section
                 class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
             >
@@ -80,16 +81,13 @@ import Layout from "../layouts/Layout.astro";
                             </tr>
                         </thead>
                         <tbody id="taskTableBody" class="text-sm divide-y">
-                            <!-- Data diisi via JavaScript -->
                         </tbody>
                     </table>
                 </div>
             </section>
         </div>
 
-        <!-- Kolom Kanan: WA Status & Reminders Status -->
         <div class="space-y-6">
-            <!-- WhatsApp Session Card -->
             <section
                 class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
             >
@@ -97,27 +95,33 @@ import Layout from "../layouts/Layout.astro";
                 <div id="waStatusContainer" class="text-center space-y-4">
                     <div
                         id="waStatusText"
-                        class="py-2 px-4 rounded bg-gray-100 font-mono text-sm"
+                        class="py-2 px-4 rounded bg-gray-100 font-mono text-sm text-gray-500"
                     >
-                        LOADING...
+                        MEMERIKSA...
                     </div>
+
                     <div
                         id="qrContainer"
                         class="hidden border-2 border-dashed p-4 rounded bg-white"
                     >
-                        <p class="text-xs text-gray-500 mb-2">
-                            Scan QR untuk Login
+                        <p class="text-xs text-gray-500 mb-2 font-semibold">
+                            Silakan Scan QR
                         </p>
                         <img
                             id="qrImage"
                             src=""
-                            class="mx-auto w-48 h-48 border"
+                            class="mx-auto w-48 h-48 border shadow-sm"
+                            alt="WhatsApp QR Code"
                         />
+                        <p class="text-[10px] text-gray-400 mt-2 italic">
+                            QR akan diperbarui otomatis
+                        </p>
                     </div>
+
                     <div class="flex gap-2">
                         <button
                             id="btnCheckStatus"
-                            class="flex-1 text-xs bg-gray-100 py-2 rounded border hover:bg-gray-200"
+                            class="flex-1 text-xs bg-indigo-50 text-indigo-600 py-2 rounded border border-indigo-100 hover:bg-indigo-100"
                             >Cek Status</button
                         >
                         <button
@@ -129,92 +133,128 @@ import Layout from "../layouts/Layout.astro";
                 </div>
             </section>
 
-            <!-- Reminder History Log -->
             <section
                 class="bg-white p-6 rounded-xl shadow-sm border border-gray-100"
             >
-                <h2 class="text-lg font-semibold mb-2">Log Reminder</h2>
+                <h2 class="text-lg font-semibold mb-2">Log Aktivitas</h2>
                 <div
                     id="reminderLog"
-                    class="text-xs space-y-2 max-h-60 overflow-y-auto"
+                    class="text-[10px] space-y-2 max-h-60 overflow-y-auto text-gray-500"
                 >
-                    <p class="text-gray-400 italic text-center">
-                        Belum ada pengiriman
-                    </p>
+                    <p class="italic">Monitor sistem berjalan...</p>
                 </div>
             </section>
         </div>
     </div>
 
-    <!-- Client-side Logic -->
-    <script is:inline>
-        const API_URL = ""; // Jika beda domain, isi dengan URL Worker Anda
+    <script is:inline define:vars={{ apiUrl }}>
         const SESSION_NAME = "gereja-bot";
 
-        // --- WhatsApp Logic ---
+        // --- Fungsi WA Status ---
         async function checkWAStatus() {
-            const res = await fetch(`${API_URL}/api/wa-status`);
-            const data = await res.json();
-            const session = data.find((s) => s.name === SESSION_NAME);
+            try {
+                const res = await fetch(`${apiUrl}/api/wa-status`);
+                const data = await res.json();
+                const session = data.find((s) => s.name === SESSION_NAME);
 
-            const statusEl = document.getElementById("waStatusText");
-            const badgeEl = document.getElementById("wa-badge");
-            const qrCont = document.getElementById("qrContainer");
+                const statusEl = document.getElementById("waStatusText");
+                const badgeEl = document.getElementById("wa-badge");
+                const qrCont = document.getElementById("qrContainer");
 
-            if (session && session.status === "WORKING") {
-                statusEl.className =
-                    "py-2 px-4 rounded bg-green-100 text-green-700 font-bold";
-                statusEl.innerText = "CONNECTED";
-                badgeEl.className =
-                    "px-3 py-1 rounded-full text-xs font-semibold bg-green-500";
-                badgeEl.innerText = "Online";
-                qrCont.classList.add("hidden");
-            } else {
-                statusEl.className =
-                    "py-2 px-4 rounded bg-red-100 text-red-700 font-bold";
-                statusEl.innerText = "OFFLINE";
-                badgeEl.className =
-                    "px-3 py-1 rounded-full text-xs font-semibold bg-red-500";
-                badgeEl.innerText = "Offline";
-                loadQRCode();
+                if (session && session.status === "WORKING") {
+                    statusEl.className =
+                        "py-2 px-4 rounded bg-green-100 text-green-700 font-bold";
+                    statusEl.innerText = "CONNECTED";
+                    if (badgeEl) {
+                        badgeEl.className =
+                            "px-3 py-1 rounded-full text-xs font-semibold bg-green-500";
+                        badgeEl.innerText = "Online";
+                    }
+                    qrCont.classList.add("hidden");
+                } else {
+                    statusEl.className =
+                        "py-2 px-4 rounded bg-red-100 text-red-700 font-bold";
+                    statusEl.innerText = "OFFLINE / SCANNING";
+                    if (badgeEl) {
+                        badgeEl.className =
+                            "px-3 py-1 rounded-full text-xs font-semibold bg-red-500";
+                        badgeEl.innerText = "Offline";
+                    }
+                    initiateLogin(); // Jalankan Point 3: Start session
+                }
+            } catch (err) {
+                console.error("Gagal cek status:", err);
             }
         }
 
-        async function loadQRCode() {
-            const qrCont = document.getElementById("qrContainer");
-            const qrImg = document.getElementById("qrImage");
-            qrImg.src = `${API_URL}/api/wa-login?t=${Date.now()}`;
-            qrCont.classList.remove("hidden");
+        // Point 3: API Login Terpisah (Start lalu Ambil QR)
+        async function initiateLogin() {
+            try {
+                // 1. Trigger Start Session (POST)
+                await fetch(`${apiUrl}/api/wa-login`, { method: "POST" });
+
+                // 2. Tampilkan Gambar QR (GET)
+                const qrImg = document.getElementById("qrImage");
+                qrImg.src = `${apiUrl}/api/wa-qr?t=${Date.now()}`;
+                document
+                    .getElementById("qrContainer")
+                    .classList.remove("hidden");
+            } catch (err) {
+                console.error("Login gagal:", err);
+            }
         }
 
-        // --- Task Logic ---
+        async function logoutWA() {
+            if (!confirm("Putuskan koneksi WhatsApp?")) return;
+            await fetch(`${apiUrl}/api/wa-logout`, { method: "DELETE" });
+            checkWAStatus();
+        }
+
+        // --- Fungsi Management Task ---
         async function loadTasks() {
-            const res = await fetch(`${API_URL}/api/tasks`);
+            const res = await fetch(`${apiUrl}/api/tasks`);
             const tasks = await res.json();
             const body = document.getElementById("taskTableBody");
             body.innerHTML = tasks
                 .map(
                     (t) => `
-        <tr>
-          <td class="p-4">
-            <div class="font-bold">${t.name}</div>
-            <div class="text-xs text-gray-500">${t.title}</div>
-          </td>
-          <td class="p-4 text-xs font-mono">${t.deadline.replace("T", " ")}</td>
-          <td class="p-4"><span class="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs">${t.status}</span></td>
-          <td class="p-4 flex gap-2 justify-center">
-            <button onclick="testSend(${t.id})" class="bg-gray-800 text-white p-1 px-2 rounded text-[10px] hover:bg-black">TEST WA</button>
-            <button onclick="deleteTask(${t.id})" class="text-red-500 hover:text-red-700 text-[10px]">DELETE</button>
-          </td>
-        </tr>
-      `,
+                <tr>
+                    <td class="p-4">
+                        <div class="font-bold text-gray-800">${t.name}</div>
+                        <div class="text-[10px] text-gray-400 uppercase tracking-tight">${t.title}</div>
+                    </td>
+                    <td class="p-4 text-xs font-mono text-gray-600">${t.deadline.replace("T", " ")}</td>
+                    <td class="p-4"><span class="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-bold">${t.status}</span></td>
+                    <td class="p-4 flex gap-2 justify-center">
+                        <button onclick="testSend(${t.id})" class="bg-gray-800 text-white p-1 px-3 rounded text-[10px] hover:bg-black transition">KIRIM TEST</button>
+                        <button onclick="deleteTask(${t.id})" class="text-red-400 hover:text-red-600 p-1 rounded transition">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+            `,
                 )
                 .join("");
         }
 
+        // Point 5: Fungsi Hapus Task
+        async function deleteTask(id) {
+            if (!confirm("Hapus tugas ini secara permanen?")) return;
+            try {
+                const res = await fetch(`${apiUrl}/api/tasks/${id}`, {
+                    method: "DELETE",
+                });
+                const result = await res.json();
+                if (result.success) loadTasks();
+            } catch (err) {
+                alert("Gagal menghapus tugas");
+            }
+        }
+
         async function testSend(id) {
-            if (!confirm("Kirim pesan tes sekarang?")) return;
-            const res = await fetch(`${API_URL}/api/tasks/${id}/test-send`, {
+            const res = await fetch(`${apiUrl}/api/tasks/${id}/test-send`, {
                 method: "POST",
             });
             const data = await res.json();
@@ -222,25 +262,31 @@ import Layout from "../layouts/Layout.astro";
             loadTasks();
         }
 
+        // Submit Form
         document.getElementById("taskForm").onsubmit = async (e) => {
             e.preventDefault();
-            const body = {
+            const payload = {
                 name: document.getElementById("name").value,
                 phone_number: document.getElementById("phone").value,
                 title: document.getElementById("title").value,
                 description: document.getElementById("description").value,
                 deadline: document.getElementById("deadline").value,
             };
-            await fetch(`${API_URL}/api/tasks`, {
+            await fetch(`${apiUrl}/api/tasks`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
+                body: JSON.stringify(payload),
             });
             e.target.reset();
             loadTasks();
         };
 
-        // Initialize
+        // Event Listeners
+        document.getElementById("btnCheckStatus").onclick = checkWAStatus;
+        document.getElementById("btnLogout").onclick = logoutWA;
+        document.getElementById("refreshTasks").onclick = loadTasks;
+
+        // Init
         checkWAStatus();
         loadTasks();
     </script>

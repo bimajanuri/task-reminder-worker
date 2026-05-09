@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "build": "tsc",
     "db:init": "wrangler d1 execute task_reminder_db --local --file=./schema.sql",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
